@@ -1,7 +1,11 @@
 #!/usr/bin/env ruby
 
-require 'colors'
-require_relative 'game_runner'
+require 'bundler/setup'
+require 'gaminator'
+require 'set'
+
+
+LOG = File.open("log.txt","w")
 
 class Entity
   attr_accessor :x, :y, :texture, :color, :colors
@@ -31,6 +35,11 @@ class Entity
       @color = COLOR_MAP[color]
     end
   end
+
+  def pixels
+    Set.new(self.texture.map.with_index{|r,ri|
+      r.each_char.map.with_index{|c,ci| [(@x+ci).round,(@y+ri).round]}}.flatten(1))
+  end
 end
 
 class StaticEntity < Entity
@@ -45,6 +54,15 @@ class StaticEntity < Entity
     if @x + @width < 2
       @x = context.width
     end
+  end
+
+  def colliding_pixels(entity)
+    LOG.puts(self.pixels.inspect)
+    self.pixels & entity.pixels
+  end
+
+  def collide?(entity)
+    !colliding_pixels(entity).empty?
   end
 end
 
@@ -100,7 +118,7 @@ class Car < Entity
   end
 
   def shoot(context)
-    context.add_entity(Shoot.new(@x+5,@y,"shoot",:red))
+    context.add_entity(Shoot.new(@x+7,@y,"shoot",:red))
   end
 end
 
@@ -123,6 +141,34 @@ class Road
   def texture
     ["-" * @width, "%" * @width, "%" * @width]
   end
+
+  def collide?(entity)
+    false
+  end
+end
+
+class Boom
+  attr_accessor :x,:y
+  def initialize(x,y)
+    @x, @y = x, y
+    @char = "x"
+  end
+
+  def char
+    @char
+  end
+
+  def color
+    Curses::COLOR_YELLOW
+  end
+
+  def update(context)
+    @char = @char == "x" ? " " : "x"
+  end
+
+  def collide?(car)
+    false
+  end
 end
 
 class CarGame
@@ -135,18 +181,23 @@ class CarGame
     @car = Car.new(10, 10)
     @entities = [
       Road.new(@width,@height),
-      StaticEntity.new(50,@height-6,"tree",:green),
+      StaticEntity.new(60,@height-6,"tree",:green),
       StaticEntity.new(90,@height-6,"wall",:yellow),
-      StaticEntity.new(20,@height-3,"hole",:red),
-      StaticEntity.new(10,@height-3,"small_hole",:red),
+      StaticEntity.new(40,@height-4,"hole",:red),
+      StaticEntity.new(80,@height-4,"small_hole",:red),
       StaticEntity.new(5,5,"cloud1",:blue),
       StaticEntity.new(50,3,"cloud2",:cyan),
       StaticEntity.new(70,6,"cloud3",:blue),
       StaticEntity.new(100,8,"cloud4",:cyan),
-      Bomb.new(110,1,"bomb",:yellow),
+      #StaticEntity.new(130,@height-8,"house",:cyan),
+      Bomb.new(50,1,"bomb",:yellow),
       @car
     ]
     @distance = 0
+    @state = :running
+    @collision = []
+    @bombs = @entities.select{|e| Bomb === e }
+    @sleep_time = 0.05
   end
 
   def objects
@@ -193,16 +244,42 @@ class CarGame
   end
 
   def exit
+    @running = false
     Kernel.exit
   end
 
   def tick
-    @entities.each{|e| e.update(self) }
-    @distance += 0.1
+    case @state
+    when :running
+      @entities.each{|e| e.update(self) }
+      @bombs.each do |bomb|
+        @entities.select{|e| Shoot === e }.each do |shoot|
+          if bomb.collide?(shoot)
+            remove_entity(bomb)
+            remove_entity(shoot)
+          end
+        end
+      end
+      @entities.each do |entity|
+        next if entity == @car
+        if entity.collide?(@car)
+          entity.colliding_pixels(@car).each do |x,y|
+            @entities << Boom.new(x,y)
+            @collision << @entities.last
+          end
+          @state = :end
+          @sleep_time = 0.2
+          break
+        end
+      end
+      @distance += 0.1
+    when :end
+      @collision.each{|c| c.update(self) }
+    end
   end
 
   def exit_message
-    puts "You're dead ;(."
+    puts "You're dead ;(. %dm" % @distance
   end
 
   def textbox_content
@@ -210,47 +287,8 @@ class CarGame
   end
 
   def sleep_time
-    0.05
+    @sleep_time
   end
 end
 
-GameRunner.new(CarGame).run
-
-exit
-
-LINES = 3
-COLOR_MAP = {
-  /\(|\)|@/ => :green,
-  /#/ => :yellow,
-  /-|\\|\// => :bold,
-  /=/ => :blue,
-  /\*/ => :blue,
-  /%/ => :yellow_bg
-}
-
-def paint(chars)
-  (chars || []).map do |char|
-    _,color = COLOR_MAP.find{|k,v| char =~ k }
-    color ? char.hl(color) : char
-  end.join("")
-end
-
-
-def draw(screen,entity)
-  if Array === entity
-    texture = entity
-    bottom_offset = 0
-    left_offset = 0
-  else
-    texture = entity.texture
-    bottom_offset = entity.y
-    left_offset = entity.x
-  end
-  texture.each.with_index do |row,row_index|
-    row.each_char.with_index do |pixel,pixel_index|
-      next if pixel_index + left_offset >= screen.first.size
-      next if pixel_index + left_offset < 0
-      screen[row_index+bottom_offset][pixel_index+left_offset] = pixel
-    end
-  end
-end
+Gaminator::Runner.new(CarGame).run

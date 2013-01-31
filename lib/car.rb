@@ -52,7 +52,7 @@ class StaticEntity < Entity
   def update(context)
     @x -= 1
     if @x + @width < 2
-      @x = context.width
+      context.remove_entity(self)
     end
   end
 
@@ -171,6 +171,15 @@ class Boom
   end
 end
 
+class Cloud < StaticEntity
+  def update(context)
+    @x -= 1
+    if @x + @width < 2
+      @x = context.width
+    end
+  end
+end
+
 class CarGame
   attr_reader :width, :height
 
@@ -179,25 +188,40 @@ class CarGame
     @width = width
     @height = height
     @car = Car.new(10, 10)
+    x_offset = 0
     @entities = [
       Road.new(@width,@height),
-      StaticEntity.new(60,@height-6,"tree",:green),
-      StaticEntity.new(90,@height-6,"wall",:yellow),
-      StaticEntity.new(40,@height-4,"hole",:red),
-      StaticEntity.new(80,@height-4,"small_hole",:red),
-      StaticEntity.new(5,5,"cloud1",:blue),
-      StaticEntity.new(50,3,"cloud2",:cyan),
-      StaticEntity.new(70,6,"cloud3",:blue),
-      StaticEntity.new(100,8,"cloud4",:cyan),
-      #StaticEntity.new(130,@height-8,"house",:cyan),
-      Bomb.new(50,1,"bomb",:yellow),
+      File.read("data/track.txt").split("\n").map do |line|
+        type,x_delta = line.split(",")
+        x_offset += x_delta.to_i
+        case type
+        when "bomb"
+          Bomb.new(x_offset,2,type,:yellow)
+        when "hole", "small_hole"
+          StaticEntity.new(x_offset,@height-4,type,:red)
+        when "wall", "tree","finish"
+          StaticEntity.new(x_offset,@height-6,type,:red)
+        when "house"
+          StaticEntity.new(x_offset,@height-7,type,:red)
+        when /cloud/
+          color =
+            if type =~ /(2|4)$/
+              :blue
+            else
+              :cyan
+            end
+          Cloud.new(x_offset,(rand*10).round,type,color)
+        end
+      end,
       @car
-    ]
+    ].flatten
     @distance = 0
+    @entity_distance = 30
     @state = :running
     @collision = []
     @bombs = @entities.select{|e| Bomb === e }
-    @sleep_time = 0.05
+    @sleep_time = 0.04
+    @counter = 0
   end
 
   def objects
@@ -272,6 +296,7 @@ class CarGame
           break
         end
       end
+      @counter += 1
       @distance += 0.1
     when :end
       @collision.each{|c| c.update(self) }

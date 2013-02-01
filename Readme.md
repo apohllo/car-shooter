@@ -4,4 +4,5 @@ Controls
 * q - quit
 
 To start the game type:
+
   ruby ./lib/car.rb

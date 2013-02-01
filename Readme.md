@@ -5,4 +5,4 @@ Controls
 
 To start the game type:
 
-  ruby ./lib/car.rb
+  ./lib/car.rb

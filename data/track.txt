@@ -16,4 +16,8 @@ wall,30
 hole,3
 bomb,5
 bomb,15
+hole,20
+bomb,5
+bomb,5
+bomb,5
 finish,30

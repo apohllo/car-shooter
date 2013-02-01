@@ -178,6 +178,10 @@ class Cloud < StaticEntity
       @x = context.width
     end
   end
+
+  def collide?(entity)
+    false
+  end
 end
 
 class CarGame

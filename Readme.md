@@ -6,3 +6,7 @@ Controls
 To start the game type:
 
   ./lib/car.rb
+  
+Demo
+  
+  http://ascii.io/a/1987
